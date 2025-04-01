@@ -1,4 +1,3 @@
-
 const videoPreview = document.getElementById("videoPreview");
 const uploadBtn = document.getElementById("uploadBtn");
 const videoInput = document.getElementById("videoInput");
@@ -7,15 +6,20 @@ const mergeBtn = document.getElementById("mergeBtn");
 
 let videoFiles = [];
 
-uploadBtn.addEventListener("click", () => videoInput.click());
+// ✅ Confirm Upload Button Click
+uploadBtn.addEventListener("click", () => {
+    console.log("Upload button clicked");
+    videoInput.click();
+});
 
+// ✅ Handle File Selection
 videoInput.addEventListener("change", (event) => {
     const files = Array.from(event.target.files);
+    console.log("Selected files:", files);
 
     if (files.length === 0) return;
 
     files.forEach((file) => {
-        // Prevent duplicate uploads
         if (videoFiles.some(video => video.name === file.name)) {
             alert("This video is already added!");
             return;
@@ -25,10 +29,10 @@ videoInput.addEventListener("change", (event) => {
         generateThumbnail(url, file.name, file);
     });
 
-    // Reset file input to allow re-uploading the same file
-    videoInput.value = "";
+    videoInput.value = ""; // Reset input for re-upload
 });
 
+// ✅ Generate Thumbnail & Add to Timeline
 function generateThumbnail(videoUrl, fileName, file) {
     const video = document.createElement("video");
     video.src = videoUrl;
@@ -36,24 +40,25 @@ function generateThumbnail(videoUrl, fileName, file) {
     video.playsInline = true;
 
     video.addEventListener("loadedmetadata", () => {
-        video.currentTime = 2; // Capture frame at 2 seconds
+        video.currentTime = 2;
     });
 
     video.addEventListener("seeked", () => {
         const canvas = document.createElement("canvas");
         const ctx = canvas.getContext("2d");
 
-        canvas.width = 160; // Set thumbnail size
+        canvas.width = 160;
         canvas.height = 90;
 
         ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
 
         const thumbnailUrl = canvas.toDataURL("image/png");
-        addToTimeline(videoUrl, fileName, thumbnailUrl, formatDuration(video.duration));
+        addToTimeline(videoUrl, fileName, thumbnailUrl, formatDuration(video.duration), file);
     });
 }
 
-function addToTimeline(videoUrl, fileName, thumbnailUrl, duration) {
+// ✅ Add Video to Timeline
+function addToTimeline(videoUrl, fileName, thumbnailUrl, duration, file) {
     const videoId = videoFiles.length;
 
     const videoBlock = document.createElement("div");
@@ -75,29 +80,28 @@ function addToTimeline(videoUrl, fileName, thumbnailUrl, duration) {
     removeBtn.classList.add("remove-btn");
     removeBtn.textContent = "X";
 
-    // 🛑 Prevent 'X' from playing the video
     removeBtn.addEventListener("click", (event) => {
         event.stopPropagation();
         removeVideo(videoId, videoBlock);
     });
 
-    // Click event to play the video
     videoBlock.addEventListener("click", () => {
         videoPreview.src = videoUrl;
         videoPreview.play();
     });
 
-    // Append elements
     videoBlock.appendChild(thumbnail);
     videoBlock.appendChild(videoLabel);
     videoBlock.appendChild(durationLabel);
     videoBlock.appendChild(removeBtn);
     sortableList.appendChild(videoBlock);
 
-    videoFiles.push({ id: videoId, url: videoUrl, name: fileName, duration });
+    videoFiles.push({ id: videoId, url: videoUrl, name: fileName, duration, filePath: file.path });
+
+    console.log("Added to timeline:", fileName);
 }
 
-// Drag & Drop Sorting
+// ✅ Drag & Drop Sorting
 new Sortable(sortableList, {
     animation: 150,
     onEnd: () => {
@@ -107,47 +111,51 @@ new Sortable(sortableList, {
     }
 });
 
-// Remove Video from Timeline
+// ✅ Remove Video
 function removeVideo(videoId, videoBlock) {
-    // Find the video being removed
     const removedVideo = videoFiles.find(v => v.id === videoId);
-
-    // Remove from list
     videoFiles = videoFiles.filter(v => v.id !== videoId);
     videoBlock.remove();
 
-    // 🛑 Stop the video if it’s playing
     if (videoPreview.src.includes(removedVideo.url)) {
         videoPreview.pause();
         videoPreview.src = "";
     }
 }
 
-
-// Merge & Play Videos Sequentially
-mergeBtn.addEventListener("click", () => {
-   
-    if (videoFiles.length === 0) return;
-
-    let currentIndex = 0;
-    function playNext() {
-        if (currentIndex < videoFiles.length) {
-            videoPreview.src = videoFiles[currentIndex].url;
-            videoPreview.play();
-            videoPreview.onended = () => {
-                currentIndex++;
-                playNext();
-            };
-        }
-    }
-    playNext();
-});
-
-
-
-// Format duration as MM:SS
+// ✅ Format Duration
 function formatDuration(seconds) {
     const min = Math.floor(seconds / 60);
     const sec = Math.floor(seconds % 60);
     return `${min}:${sec < 10 ? "0" : ""}${sec}`;
 }
+const { ipcRenderer } = require("electron");
+const statusText = document.createElement("p");
+document.body.appendChild(statusText);
+
+mergeBtn.addEventListener("click", async () => {
+    if (videoFiles.length === 0) return alert("No videos selected!");
+
+    // 🛠️ Use file paths instead of URLs
+    const videoPaths = videoFiles.map(video => video.filePath);
+
+    statusText.textContent = "Waiting for merge...";
+    
+    try {
+        const result = await ipcRenderer.invoke("merge-videos", videoPaths);
+        if (result.success) {
+            statusText.textContent = "Merge completed! Saved to: " + result.outputFilePath;
+            videoPreview.src = result.outputFilePath; // ✅ Auto-play merged video
+            videoPreview.play();
+        } else {
+            statusText.textContent = "Merge failed: " + result.message;
+        }
+    } catch (error) {
+        statusText.textContent = "Error: " + error.message;
+    }
+});
+
+// Listen for progress updates
+ipcRenderer.on("merge-status", (event, data) => {
+    statusText.textContent = data.status;
+});
