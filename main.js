@@ -25,7 +25,6 @@ app.on("window-all-closed", () => {
     }
 });
 
-// ✅ Handle Video Merging
 ipcMain.handle("merge-videos", async (event, videoData) => {
     if (videoData.length === 0) return { success: false, message: "No videos provided!" };
 
@@ -38,35 +37,82 @@ ipcMain.handle("merge-videos", async (event, videoData) => {
     if (saveDialog.canceled) return { success: false, message: "No location selected." };
 
     const outputFilePath = saveDialog.filePath;
+    let tempFiles = [];
+    let processedFiles = [];
 
-    // ✅ Save buffers as temporary files
-    const tempFiles = videoData.map((video, index) => {
-        const tempFilePath = path.join(os.tmpdir(), `temp_video_${index}.mp4`);
-        fs.writeFileSync(tempFilePath, Buffer.from(video.buffer));
-        return tempFilePath;
-    });
-
-    return new Promise((resolve, reject) => {
-        const command = ffmpeg();
-
-        tempFiles.forEach(filePath => {
-            command.input(filePath);
+    try {
+        // ✅ Save buffers as temporary files
+        tempFiles = videoData.map((video, index) => {
+            const tempFilePath = path.join(os.tmpdir(), `temp_video_${index}.mp4`);
+            fs.writeFileSync(tempFilePath, Buffer.from(video.buffer));
+            return tempFilePath;
         });
 
-        command
-            .on("start", () => console.log("Merging videos..."))
+        console.log("Saved temp files:", tempFiles);
+
+        // ✅ Normalize all videos before merging
+        processedFiles = await Promise.all(tempFiles.map((file, index) => normalizeVideo(file, index)));
+
+        return new Promise((resolve, reject) => {
+            const command = ffmpeg();
+
+            processedFiles.forEach(filePath => command.input(filePath));
+
+            command
+                .on("start", () => console.log("Merging videos..."))
+                .on("end", () => {
+                    console.log("Merge Completed!");
+                    cleanupTempFiles([...tempFiles, ...processedFiles]);
+                    resolve({ success: true, outputFilePath });
+                })
+                .on("error", (err) => {
+                    console.error("Merge Error:", err);
+                    cleanupTempFiles([...tempFiles, ...processedFiles]);
+                    reject({ success: false, message: err.message });
+                })
+                .mergeToFile(outputFilePath, path.dirname(outputFilePath));
+        });
+
+    } catch (error) {
+        console.error("Processing Error:", error);
+        cleanupTempFiles([...tempFiles, ...processedFiles]);
+        return { success: false, message: "Failed to process videos." };
+    }
+});
+
+// ✅ Function to normalize video (resize, re-encode)
+function normalizeVideo(inputFile, index) {
+    return new Promise((resolve, reject) => {
+        const outputFilePath = path.join(os.tmpdir(), `normalized_video_${index}.mp4`);
+        
+        ffmpeg(inputFile)
+            .outputOptions([
+                "-vf scale=1280:720", // ✅ Resize to 720p
+                "-r 30", // ✅ Standardize frame rate to 30 FPS
+                "-c:v libx264", // ✅ Set consistent video codec
+                "-preset fast",
+                "-c:a aac", // ✅ Ensure audio consistency
+                "-b:a 128k"
+            ])
             .on("end", () => {
-                console.log("Merge Completed!");
-
-                // ✅ Delete temporary files
-                tempFiles.forEach(file => fs.unlinkSync(file));
-
-                resolve({ success: true, outputFilePath });
+                console.log(`Normalized video saved: ${outputFilePath}`);
+                resolve(outputFilePath);
             })
             .on("error", (err) => {
-                console.error("Merge Error:", err);
-                reject({ success: false, message: err.message });
+                console.error("Normalization Error:", err);
+                reject(err);
             })
-            .mergeToFile(outputFilePath, path.dirname(outputFilePath));
+            .save(outputFilePath);
     });
-});
+}
+
+// ✅ Function to clean up temp files
+function cleanupTempFiles(files) {
+    files.forEach(file => {
+        try {
+            if (fs.existsSync(file)) fs.unlinkSync(file);
+        } catch (err) {
+            console.warn(`Failed to delete temp file: ${file}`, err);
+        }
+    });
+}
