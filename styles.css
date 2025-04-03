@@ -86,14 +86,44 @@ button:hover {
 }
 
 /* Video List */
+/* Timeline Track - Horizontal Scroll with Padding */
 #sortableList {
     display: flex;
-    flex-wrap: wrap;
-    justify-content: center;
+    flex-wrap: nowrap; /* Keeps videos in a single row */
+    justify-content: center; /* Centers videos in the timeline */
+    align-items: center; /* Aligns vertically in the middle */
     gap: 10px;
-    padding: 10px;
+    max-width: 100%;
+    overflow-x: auto; /* Enables horizontal scrolling */
+    padding: 10px 20px; /* Small gap at the start and end */
+    background: #222; /* Dark background for contrast */
+    border-radius: 8px;
+    box-shadow: inset 0px 0px 5px rgba(255, 255, 255, 0.1);
+    white-space: nowrap; /* Prevents wrapping */
 }
 
+/* Video Blocks in Timeline */
+.video-block {
+    flex: 0 0 auto; /* Prevents resizing */
+    width: 160px;
+    display: flex;
+    flex-direction: column;
+    align-items: center; /* Centers text & remove button */
+}
+
+/* Hide Scrollbar for a Clean Look */
+#sortableList::-webkit-scrollbar {
+    height: 8px;
+}
+
+#sortableList::-webkit-scrollbar-thumb {
+    background: #888;
+    border-radius: 4px;
+}
+
+#sortableList::-webkit-scrollbar-thumb:hover {
+    background: #555;
+}
 /* Video Block */
 .video-block {
     display: flex;
