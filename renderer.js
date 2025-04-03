@@ -7,6 +7,9 @@ const mergeBtn = document.getElementById("mergeBtn");
 let videoFiles = [];
 
 uploadBtn.addEventListener("click", () => videoInput.click());
+document.getElementById("addNewVideo").addEventListener("click", function () {
+    document.getElementById("videoInput").click(); // Opens file selector
+});
 
 // ✅ Handle File Selection
 videoInput.addEventListener("change", async (event) => {
@@ -93,22 +96,31 @@ function addToTimeline(videoUrl, fileName, thumbnailUrl, duration, fileBuffer) {
     new Sortable(sortableList, {
         animation: 150,
         onEnd: () => {
-            videoFiles = Array.from(sortableList.children).map((block) => {
-                return videoFiles.find(v => v.id == block.dataset.id);
+            const reorderedFiles = [];
+            Array.from(sortableList.children).forEach((block) => {
+                const id = parseInt(block.dataset.id);
+                const video = videoFiles.find(v => v.id === id);
+                if (video) reorderedFiles.push(video);
             });
+            videoFiles = reorderedFiles;
         }
     });
 }
 
 // ✅ Remove Video
 function removeVideo(videoId, videoBlock) {
-    videoFiles = videoFiles.filter(v => v.id !== videoId);
+    const index = videoFiles.findIndex(v => v.id == videoId);
+    if (index !== -1) {
+        videoFiles.splice(index, 1);
+    }
+
     videoBlock.remove();
 
     if (videoFiles.length === 0) {
         videoPreview.src = "";
     }
 }
+
 
 // ✅ Format Duration
 function formatDuration(seconds) {
