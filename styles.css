@@ -22,6 +22,9 @@ body {
     left: 0;
     z-index: 1000;
 }
+.editor-container {
+    margin-top: 85px; /* Adjust this based on your header height */
+}
 
 .header h1 {
     margin: 0;
@@ -46,8 +49,8 @@ body {
 
 
 #videoPreview {
-    width: 720px;  /* Set fixed size */
-    height: 405px; /* Aspect ratio 16:9 */
+    width: 800px;  /* Set fixed size */
+    height: 450px; /* Aspect ratio 16:9 */
     border-radius: 8px;
     object-fit: cover; /* Ensures it looks neat */
 }
@@ -134,7 +137,8 @@ button:hover {
 }
 
 .video-block:hover {
-    background: #555;
+    background: #444;
+    transform: translateY(-5px);
 }
 
 /* Video Thumbnails */
@@ -177,20 +181,52 @@ button:hover {
 }
 
 .add-video:hover {
-    background: #555;
+    background: #444;
     border-color: #aaa;
 }
+
 /* Merge Button */
 #mergeBtn {
     width: 200px;
     font-size: 18px;
 }
+.hidden {
+    display: none;
+}
+
+.progress-container {
+    width: 80%;
+    margin: 15px auto;
+    text-align: center;
+    padding: 10px;
+    background: #222; /* Dark background */
+    border-radius: 8px;
+    box-shadow: 0px 4px 6px rgba(255, 255, 255, 0.1);
+    color: #fff; /* Light text */
+    font-weight: bold;
+}
+
+.progress-bar {
+    width: 100%;
+    height: 8px;
+    background: rgba(255, 255, 255, 0.2);
+    border-radius: 4px;
+    overflow: hidden;
+    position: relative;
+}
+
+#progressFill {
+    width: 0%;
+    height: 100%;
+    background: linear-gradient(90deg, #ff8c00, #ff4500); /* 🔥 Gradient effect */
+    transition: width 0.3s ease-in-out;
+}
 
 /* Responsive Design */
 @media (max-width: 1024px) {
     #videoPreview {
-        width: 640px;
-        height: 360px;
+        width: 740px;
+        height: 450px;
     }
 }
 
@@ -225,7 +261,7 @@ button:hover {
 }
 
 @media (max-width: 480px) {
-    .video-block
+    .video-block,
     .add-video {
         width: 100px;
         height: 110px;
