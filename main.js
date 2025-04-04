@@ -38,44 +38,42 @@ ipcMain.handle("merge-videos", async (event, videoData) => {
 
     const outputFilePath = saveDialog.filePath;
     let tempFiles = [];
-    let processedFiles = [];
 
     try {
-        // ✅ Save buffers as temporary files
         tempFiles = videoData.map((video, index) => {
             const tempFilePath = path.join(os.tmpdir(), `temp_video_${index}.mp4`);
             fs.writeFileSync(tempFilePath, Buffer.from(video.buffer));
             return tempFilePath;
         });
 
-        console.log("Saved temp files:", tempFiles);
-
-        // ✅ Normalize all videos before merging
-        processedFiles = await Promise.all(tempFiles.map((file, index) => normalizeVideo(file, index)));
-
         return new Promise((resolve, reject) => {
             const command = ffmpeg();
 
-            processedFiles.forEach(filePath => command.input(filePath));
+            tempFiles.forEach((filePath) => command.input(filePath));
 
+            let progress = 0;
             command
-                .on("start", () => console.log("Merging videos..."))
+                .on("start", () => {
+                    progress = 10;
+                    mainWindow.webContents.send("merge-progress", progress);
+                })
+                .on("progress", (data) => {
+                    if (data.percent) {
+                        progress = Math.min(90, Math.round(data.percent));
+                        mainWindow.webContents.send("merge-progress", progress);
+                    }
+                })
                 .on("end", () => {
-                    console.log("Merge Completed!");
-                    cleanupTempFiles([...tempFiles, ...processedFiles]);
+                    mainWindow.webContents.send("merge-progress", 100);
                     resolve({ success: true, outputFilePath });
                 })
                 .on("error", (err) => {
-                    console.error("Merge Error:", err);
-                    cleanupTempFiles([...tempFiles, ...processedFiles]);
+                    mainWindow.webContents.send("merge-progress", 0);
                     reject({ success: false, message: err.message });
                 })
                 .mergeToFile(outputFilePath, path.dirname(outputFilePath));
         });
-
     } catch (error) {
-        console.error("Processing Error:", error);
-        cleanupTempFiles([...tempFiles, ...processedFiles]);
         return { success: false, message: "Failed to process videos." };
     }
 });

@@ -136,19 +136,41 @@ function formatDuration(seconds) {
 }
 
 // ✅ Merge Videos
+const mergeProgress = document.getElementById("mergeProgress");
+const progressText = document.getElementById("progressText");
+const progressContainer = document.getElementById("progressContainer");
+
 mergeBtn.addEventListener("click", async () => {
     if (videoFiles.length === 0) return alert("No videos selected!");
 
+    // Show the progress bar
+    progressContainer.classList.remove("hidden");
+    mergeProgress.value = 0;
+    progressText.innerText = "Merging...";
+
     try {
         const result = await window.electron.mergeVideos(videoFiles);
+
         if (result.success) {
-            alert(`Merge completed! Video saved.`);
+            progressText.innerText = "Merge Completed!";
+            mergeProgress.value = 100;
             videoPreview.src = result.outputFilePath;
             videoPreview.play();
         } else {
-            alert("Merge failed: " + result.message);
+            progressText.innerText = "Merge Failed!";
         }
     } catch (error) {
-        alert("Error: " + error.message);
+        progressText.innerText = "Error!";
     }
+
+    // Hide progress bar after a few seconds
+    setTimeout(() => {
+        progressContainer.classList.add("hidden");
+    }, 3000);
+});
+
+// Listen for progress updates from main.js
+window.electron.onMergeProgress((progress) => {
+    mergeProgress.value = progress;
+    progressText.innerText = `Merging... ${progress}%`;
 });
