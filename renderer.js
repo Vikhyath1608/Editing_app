@@ -88,11 +88,16 @@ function addToTimeline(videoUrl, fileName, thumbnailUrl, duration, fileBuffer) {
         videoPreview.play();
     });
 
-    sortableList.appendChild(videoBlock);
+    // 🔹 Insert before `#addNewVideo`
+    const addNewBlock = document.getElementById("addNewVideo");
+    sortableList.insertBefore(videoBlock, addNewBlock);
+
+    // 🔹 Move `#addNewVideo` to the end
+    sortableList.appendChild(addNewBlock);
 
     videoFiles.push({ id: videoId, name: fileName, duration, buffer: fileBuffer });
 
-    // ✅ Initialize Sortable
+    // ✅ Update SortableJS to maintain correct order
     new Sortable(sortableList, {
         animation: 150,
         onEnd: () => {
@@ -106,6 +111,7 @@ function addToTimeline(videoUrl, fileName, thumbnailUrl, duration, fileBuffer) {
         }
     });
 }
+
 
 // ✅ Remove Video
 function removeVideo(videoId, videoBlock) {
