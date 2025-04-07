@@ -143,7 +143,6 @@ const progressContainer = document.getElementById("progressContainer");
 mergeBtn.addEventListener("click", async () => {
     if (videoFiles.length === 0) return alert("No videos selected!");
 
-    // Show the progress bar
     progressContainer.classList.remove("hidden");
     mergeProgress.value = 0;
     progressText.innerText = "Merging...";
@@ -154,20 +153,20 @@ mergeBtn.addEventListener("click", async () => {
         if (result.success) {
             progressText.innerText = "Merge Completed!";
             mergeProgress.value = 100;
-            videoPreview.src = result.outputFilePath;
+            videoPreview.src = `file://${result.outputFilePath}`;
             videoPreview.play();
         } else {
-            progressText.innerText = "Merge Failed!";
+            progressText.innerText = `Failed: ${result.message}`;
         }
     } catch (error) {
-        progressText.innerText = "Error!";
+        progressText.innerText = "Unexpected Error!";
     }
 
-    // Hide progress bar after a few seconds
     setTimeout(() => {
         progressContainer.classList.add("hidden");
     }, 3000);
 });
+
 
 // Listen for progress updates from main.js
 window.electron.onMergeProgress((progress) => {

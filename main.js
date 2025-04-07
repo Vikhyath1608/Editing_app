@@ -1,116 +1,146 @@
-const { app, BrowserWindow, ipcMain, dialog } = require("electron");
-const ffmpeg = require("fluent-ffmpeg");
+const { app, BrowserWindow, ipcMain } = require("electron");
 const path = require("path");
 const fs = require("fs");
 const os = require("os");
+const { spawn } = require("child_process");
 
-let mainWindow;
-
-app.whenReady().then(() => {
-    mainWindow = new BrowserWindow({
+function createWindow() {
+    const win = new BrowserWindow({
         width: 1200,
         height: 800,
         webPreferences: {
-            contextIsolation: true,
-            preload: path.join(__dirname, 'preload.js')
+            preload: path.join(__dirname, "preload.js")
         }
     });
 
-    mainWindow.loadFile("index.html");
-});
+    win.loadFile("index.html");
+}
 
-app.on("window-all-closed", () => {
-    if (process.platform !== "darwin") {
-        app.quit();
-    }
-});
+// Utility to run FFmpeg and return a promise
+function runFFmpeg(args, onProgress) {
+    return new Promise((resolve, reject) => {
+        const ffmpeg = spawn("ffmpeg", args);
+
+        ffmpeg.stderr.on("data", (data) => {
+            const message = data.toString();
+            const match = message.match(/frame=\s*\d+/);
+            if (match && onProgress) {
+                onProgress(message);
+            }
+        });
+
+        ffmpeg.on("error", (error) => reject(error));
+        ffmpeg.on("close", (code) => {
+            if (code === 0) resolve();
+            else reject(new Error("FFmpeg exited with code " + code));
+        });
+    });
+}
 
 ipcMain.handle("merge-videos", async (event, videoData) => {
-    if (videoData.length === 0) return { success: false, message: "No videos provided!" };
-
-    const saveDialog = await dialog.showSaveDialog(mainWindow, {
-        title: "Save Merged Video",
-        defaultPath: path.join(app.getPath("desktop"), "merged_video.mp4"),
-        filters: [{ name: "MP4 Video", extensions: ["mp4"] }]
-    });
-
-    if (saveDialog.canceled) return { success: false, message: "No location selected." };
-
-    const outputFilePath = saveDialog.filePath;
-    let tempFiles = [];
-
     try {
-        tempFiles = videoData.map((video, index) => {
-            const tempFilePath = path.join(os.tmpdir(), `temp_video_${index}.mp4`);
-            fs.writeFileSync(tempFilePath, Buffer.from(video.buffer));
-            return tempFilePath;
+        console.log("Saving temporary video files...");
+
+        const tempFiles = videoData.map((video, index) => {
+            const tempPath = path.join(os.tmpdir(), `temp_video_${index}.mp4`);
+            fs.writeFileSync(tempPath, Buffer.from(video.buffer));
+            console.log(" Saved temp file:", tempPath);
+            return tempPath;
         });
 
-        return new Promise((resolve, reject) => {
-            const command = ffmpeg();
+        console.log(" Normalizing all temp videos...");
 
-            tempFiles.forEach((filePath) => command.input(filePath));
+        const normalizedFiles = [];
 
-            let progress = 0;
-            command
-                .on("start", () => {
-                    progress = 10;
-                    mainWindow.webContents.send("merge-progress", progress);
-                })
-                .on("progress", (data) => {
-                    if (data.percent) {
-                        progress = Math.min(90, Math.round(data.percent));
-                        mainWindow.webContents.send("merge-progress", progress);
-                    }
-                })
-                .on("end", () => {
-                    mainWindow.webContents.send("merge-progress", 100);
-                    resolve({ success: true, outputFilePath });
-                })
-                .on("error", (err) => {
-                    mainWindow.webContents.send("merge-progress", 0);
-                    reject({ success: false, message: err.message });
-                })
-                .mergeToFile(outputFilePath, path.dirname(outputFilePath));
+        for (let i = 0; i < tempFiles.length; i++) {
+            const input = tempFiles[i];
+            const output = path.join(os.tmpdir(), `normalized_video_${i}.mp4`);
+            console.log(" Normalizing file " + i + ":", input);
+            console.log("Normalizing", input, "->", output);
+
+            await runFFmpeg([
+                "-i", input,
+                "-vf", "scale=1280:720",
+                "-r", "30",
+                "-c:v", "libx264",
+                "-preset", "fast",
+                "-crf", "23",
+                "-y",
+                output
+            ]);
+
+            console.log("Normalized video saved:", output);
+            normalizedFiles.push(output);
+        }
+
+        console.log(" Starting merge process...");
+
+        const { dialog } = require("electron");
+
+        const saveDialog = await dialog.showSaveDialog({
+            title: "Save Merged Video",
+            defaultPath: path.join(app.getPath("desktop"), `merged_video_${Date.now()}.mp4`),
+            filters: [{ name: "MP4 Video", extensions: ["mp4"] }],
         });
+
+        if (saveDialog.canceled || !saveDialog.filePath) {
+            return { success: false, message: "Save cancelled" };
+        }
+
+        const mergeOutput = saveDialog.filePath;
+
+
+        const ffmpegArgs = [];
+
+        normalizedFiles.forEach(file => {
+            ffmpegArgs.push("-i", file);
+            console.log("Adding input:", file);
+        });
+
+        ffmpegArgs.push(
+            "-y",
+            "-filter_complex",
+            `concat=n=${normalizedFiles.length}:v=1:a=0`,
+            mergeOutput
+        );
+
+        console.log("🔧 FFmpeg started:", "ffmpeg", ffmpegArgs.join(" "));
+
+        await runFFmpeg(ffmpegArgs, (progress) => {
+            const match = progress.match(/frame=\s*(\d+)/);
+            if (match) {
+                const percent = Math.min(100, Math.floor((parseInt(match[1], 10) / 100) * 10));
+                event.sender.send("merge-progress", percent);
+                console.log("Merge Progress:", percent + "%");
+            }
+        });
+
+        console.log(" Merge completed successfully!");
+
+        console.log("Cleaning up temporary files...");
+        [...tempFiles, ...normalizedFiles].forEach(file => {
+            try {
+                fs.unlinkSync(file);
+                console.log("Deleted:", file);
+            } catch (err) {
+                console.warn(" Could not delete temp file:", file, err);
+            }
+        });
+
+        return { success: true, outputFilePath: mergeOutput };
+
+
     } catch (error) {
-        return { success: false, message: "Failed to process videos." };
+        console.error(" Error occurred in handler for 'merge-videos':", error);
+        return {
+            success: false,
+            message: error.message
+        };
     }
 });
 
-// ✅ Function to normalize video (resize, re-encode)
-function normalizeVideo(inputFile, index) {
-    return new Promise((resolve, reject) => {
-        const outputFilePath = path.join(os.tmpdir(), `normalized_video_${index}.mp4`);
-        
-        ffmpeg(inputFile)
-            .outputOptions([
-                "-vf scale=1280:720", // ✅ Resize to 720p
-                "-r 30", // ✅ Standardize frame rate to 30 FPS
-                "-c:v libx264", // ✅ Set consistent video codec
-                "-preset fast",
-                "-c:a aac", // ✅ Ensure audio consistency
-                "-b:a 128k"
-            ])
-            .on("end", () => {
-                console.log(`Normalized video saved: ${outputFilePath}`);
-                resolve(outputFilePath);
-            })
-            .on("error", (err) => {
-                console.error("Normalization Error:", err);
-                reject(err);
-            })
-            .save(outputFilePath);
-    });
-}
+app.whenReady().then(createWindow);
 
-// ✅ Function to clean up temp files
-function cleanupTempFiles(files) {
-    files.forEach(file => {
-        try {
-            if (fs.existsSync(file)) fs.unlinkSync(file);
-        } catch (err) {
-            console.warn(`Failed to delete temp file: ${file}`, err);
-        }
-    });
-}
+app.on("window-all-closed", () => {
+    if (process.platform !== "darwin") app.quit();
+});
